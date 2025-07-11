@@ -41,6 +41,29 @@ func (r *VoucherRepository) CheckVoucherExists(flightNumber, flightDate string) 
 	return count > 0, nil
 }
 
+func (r *VoucherRepository) GetSeatByFlightNumberAndDate(flightNumber, flightDate string) ([]string, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database connection is nil")
+	}
+
+	if flightNumber == "" || flightDate == "" {
+		return nil, fmt.Errorf("flight number and date cannot be empty")
+	}
+
+	query := `SELECT seat1, seat2, seat3 FROM vouchers WHERE flight_number = ? AND flight_date = ?`
+
+	var seat1, seat2, seat3 string
+	err := r.db.QueryRow(query, flightNumber, flightDate).Scan(&seat1, &seat2, &seat3)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("database query failed: %v", err)
+	}
+
+	return []string{seat1, seat2, seat3}, nil
+}
+
 func (r *VoucherRepository) CreateVoucher(voucher *models.VoucherDB) error {
 	if r.db == nil {
 		return fmt.Errorf("database connection is nil")
@@ -66,6 +89,34 @@ func (r *VoucherRepository) CreateVoucher(voucher *models.VoucherDB) error {
 
 	result, err := r.db.Exec(query, voucher.CrewName, voucher.CrewID, voucher.FlightNumber,
 		voucher.FlightDate, voucher.AircraftType, voucher.Seat1, voucher.Seat2, voucher.Seat3, now)
+	if err != nil {
+		return fmt.Errorf("failed to insert voucher into database: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %v", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("no rows were inserted")
+	}
+
+	return nil
+}
+
+func (r *VoucherRepository) UpdateVoucher(voucher *models.UpdateVoucherDB) error {
+	if r.db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+
+	if voucher == nil {
+		return fmt.Errorf("voucher cannot be nil")
+	}
+
+	query := `UPDATE vouchers SET seat1 = ?, seat2 = ?, seat3 = ? WHERE flight_number = ? AND flight_date = ?`
+
+	result, err := r.db.Exec(query, voucher.Seat1, voucher.Seat2, voucher.Seat3, voucher.FlightNumber, voucher.FlightDate)
 	if err != nil {
 		return fmt.Errorf("failed to insert voucher into database: %v", err)
 	}

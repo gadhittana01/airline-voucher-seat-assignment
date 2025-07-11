@@ -48,37 +48,76 @@ func (s *VoucherService) GenerateVoucher(req *models.VoucherRequest) (*models.Ge
 		return nil, err
 	}
 
-	seats := s.generateRandomSeats(req.Aircraft)
-	if seats == nil {
-		return nil, utils.NewBadRequestError("invalid aircraft type")
-	}
+	var seats []string
 
-	if len(seats) != 3 {
-		return nil, utils.NewInternalServerError("failed to generate required number of seats")
-	}
+	if req.IsRegenerate {
+		generatedSeat := s.generateRandomSeats(len(req.UpdatedSeat), req.Aircraft)
+		if generatedSeat == nil {
+			return nil, utils.NewBadRequestError("invalid aircraft type")
+		}
 
-	exists, err := s.voucherRepo.CheckVoucherExists(req.FlightNumber, req.Date)
-	if err != nil {
-		return nil, utils.NewInternalServerError(err.Error())
-	}
+		currentSeats, err := s.voucherRepo.GetSeatByFlightNumberAndDate(req.FlightNumber, req.Date)
+		if err != nil {
+			return nil, utils.NewInternalServerError(err.Error())
+		}
 
-	if exists {
-		return nil, utils.NewConflictError("vouchers already exist for this flight date")
-	}
+		if len(currentSeats) == 0 {
+			return nil, utils.NewNotFoundError("seats not found")
+		}
 
-	voucherDB := &models.VoucherDB{
-		CrewName:     req.Name,
-		CrewID:       req.ID,
-		FlightNumber: req.FlightNumber,
-		FlightDate:   req.Date,
-		AircraftType: req.Aircraft,
-		Seat1:        seats[0],
-		Seat2:        seats[1],
-		Seat3:        seats[2],
-	}
+		seats = currentSeats
+		count := 0
+		for i, seat := range currentSeats {
+			if seat == req.UpdatedSeat[count] {
+				seats[i] = generatedSeat[count]
+				count++
+			}
+		}
 
-	if err := s.voucherRepo.CreateVoucher(voucherDB); err != nil {
-		return nil, utils.NewInternalServerError(fmt.Sprintf("failed to create voucher: %v", err))
+		err = s.voucherRepo.UpdateVoucher(&models.UpdateVoucherDB{
+			FlightNumber: req.FlightNumber,
+			FlightDate:   req.Date,
+			AircraftType: req.Aircraft,
+			Seat1:        seats[0],
+			Seat2:        seats[1],
+			Seat3:        seats[2],
+		})
+		if err != nil {
+			return nil, utils.NewInternalServerError(err.Error())
+		}
+	} else {
+		seats = s.generateRandomSeats(3, req.Aircraft)
+		if seats == nil {
+			return nil, utils.NewBadRequestError("invalid aircraft type")
+		}
+
+		if len(seats) != 3 {
+			return nil, utils.NewInternalServerError("failed to generate required number of seats")
+		}
+
+		exists, err := s.voucherRepo.CheckVoucherExists(req.FlightNumber, req.Date)
+		if err != nil {
+			return nil, utils.NewInternalServerError(err.Error())
+		}
+
+		if exists {
+			return nil, utils.NewConflictError("vouchers already exist for this flight date")
+		}
+
+		voucherDB := &models.VoucherDB{
+			CrewName:     req.Name,
+			CrewID:       req.ID,
+			FlightNumber: req.FlightNumber,
+			FlightDate:   req.Date,
+			AircraftType: req.Aircraft,
+			Seat1:        seats[0],
+			Seat2:        seats[1],
+			Seat3:        seats[2],
+		}
+
+		if err := s.voucherRepo.CreateVoucher(voucherDB); err != nil {
+			return nil, utils.NewInternalServerError(fmt.Sprintf("failed to create voucher: %v", err))
+		}
 	}
 
 	return &models.GenerateResponse{
@@ -87,11 +126,11 @@ func (s *VoucherService) GenerateVoucher(req *models.VoucherRequest) (*models.Ge
 	}, nil
 }
 
-func (s *VoucherService) generateRandomSeats(aircraftType string) []string {
-	return GetRandomSeats(aircraftType)
+func (s *VoucherService) generateRandomSeats(count int, aircraftType string) []string {
+	return GetRandomSeats(count, aircraftType)
 }
 
-func GetRandomSeats(aircraft string) []string {
+func GetRandomSeats(count int, aircraft string) []string {
 	layout := map[string]struct {
 		rows int
 		cols []string
@@ -113,7 +152,7 @@ func GetRandomSeats(aircraft string) []string {
 		}
 	}
 
-	if len(seats) < 3 {
+	if len(seats) < count {
 		return nil
 	}
 
@@ -122,5 +161,5 @@ func GetRandomSeats(aircraft string) []string {
 		seats[i], seats[j] = seats[j], seats[i]
 	})
 
-	return seats[:3]
+	return seats[:count]
 }
