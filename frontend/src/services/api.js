@@ -29,6 +29,19 @@ const apiService = {
     }
   },
 
+  regenerateVoucher: async (voucherData, updatedSeats) => {
+    try {
+      const response = await api.post('/generate', {
+        ...voucherData,
+        is_regenerate: true,
+        updated_seat: updatedSeats
+      });
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to regenerate vouchers');
+    }
+  },
+
   healthCheck: async () => {
     try {
       const response = await api.get('/health');

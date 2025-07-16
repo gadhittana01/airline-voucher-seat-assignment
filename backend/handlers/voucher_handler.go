@@ -82,6 +82,11 @@ func (h *VoucherHandler) GenerateVoucher(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if req.IsRegenerate && len(req.UpdatedSeat) < 1 {
+		utils.HandleError(w, utils.NewBadRequestError("Updated seat must be at least 1"))
+		return
+	}
+
 	response, err := h.voucherService.GenerateVoucher(&req)
 	if err != nil {
 		utils.HandleError(w, err)

@@ -43,6 +43,16 @@ func (s *VoucherService) CheckVoucherExists(req *models.VoucherRequest) (*models
 	}, nil
 }
 
+func (s *VoucherService) checkSeatExists(seats []string, seat string) int {
+	for idx, s := range seats {
+		if s == seat {
+			return idx
+		}
+	}
+
+	return -1
+}
+
 func (s *VoucherService) GenerateVoucher(req *models.VoucherRequest) (*models.GenerateResponse, *utils.AppError) {
 	if err := s.validateDate(req.Date); err != nil {
 		return nil, err
@@ -51,11 +61,6 @@ func (s *VoucherService) GenerateVoucher(req *models.VoucherRequest) (*models.Ge
 	var seats []string
 
 	if req.IsRegenerate {
-		generatedSeat := s.generateRandomSeats(len(req.UpdatedSeat), req.Aircraft)
-		if generatedSeat == nil {
-			return nil, utils.NewBadRequestError("invalid aircraft type")
-		}
-
 		currentSeats, err := s.voucherRepo.GetSeatByFlightNumberAndDate(req.FlightNumber, req.Date)
 		if err != nil {
 			return nil, utils.NewInternalServerError(err.Error())
@@ -66,11 +71,16 @@ func (s *VoucherService) GenerateVoucher(req *models.VoucherRequest) (*models.Ge
 		}
 
 		seats = currentSeats
-		count := 0
-		for i, seat := range currentSeats {
-			if seat == req.UpdatedSeat[count] {
-				seats[i] = generatedSeat[count]
-				count++
+
+		for _, seat := range req.UpdatedSeat {
+			idx := s.checkSeatExists(seats, seat)
+			if idx != -1 {
+				generatedSeat := s.generateRandomSeats(1, req.Aircraft)
+				if generatedSeat == nil {
+					return nil, utils.NewBadRequestError("invalid aircraft type")
+				}
+
+				seats[idx] = generatedSeat[0]
 			}
 		}
 

@@ -14,6 +14,8 @@ const VoucherGenerator = () => {
   const [error, setError] = useState('');
   const [seats, setSeats] = useState([]);
   const [showResults, setShowResults] = useState(false);
+  const [regenerateMode, setRegenerateMode] = useState(false);
+  const [selectedSeats, setSelectedSeats] = useState([]);
 
   const aircraftTypes = ['ATR', 'Airbus 320', 'Boeing 737 Max'];
 
@@ -38,6 +40,63 @@ const VoucherGenerator = () => {
     return dateString;
   };
 
+  const toggleSeatSelection = (seat) => {
+    setSelectedSeats(prev => {
+      if (prev.includes(seat)) {
+        return prev.filter(s => s !== seat);
+      } else {
+        return [...prev, seat];
+      }
+    });
+  };
+
+  const handleRegenerate = async () => {
+    if (selectedSeats.length === 0) {
+      setError('Please select at least one seat to regenerate');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const apiData = {
+        ...formData,
+        date: formatDateForAPI(formData.date)
+      };
+
+      const regenerateResponse = await apiService.regenerateVoucher(apiData, selectedSeats);
+      
+      if (regenerateResponse.success) {
+        setSeats(regenerateResponse.seats);
+        setRegenerateMode(false);
+        setSelectedSeats([]);
+      } else {
+        setError('Failed to regenerate vouchers');
+      }
+      
+    } catch (err) {
+      setError(err.message || 'An error occurred while regenerating vouchers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetToGenerate = () => {
+    setFormData({
+      name: '',
+      id: '',
+      flightNumber: '',
+      date: '',
+      aircraft: 'ATR'
+    });
+    setSeats([]);
+    setShowResults(false);
+    setRegenerateMode(false);
+    setSelectedSeats([]);
+    setError('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -50,6 +109,8 @@ const VoucherGenerator = () => {
     setError('');
     setSeats([]);
     setShowResults(false);
+    setRegenerateMode(false);
+    setSelectedSeats([]);
 
     try {
       const apiData = {
@@ -197,15 +258,81 @@ const VoucherGenerator = () => {
 
           {showResults && seats.length > 0 && (
             <div className="mt-8 p-6 bg-green-50 border border-green-200 rounded-md">
-              <h2 className="text-lg font-semibold text-green-800 mb-4">
-                Vouchers Generated Successfully!
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-green-800">
+                  Vouchers Generated Successfully!
+                </h2>
+                <div className="flex space-x-2">
+                  {!regenerateMode && (
+                    <button
+                      onClick={() => setRegenerateMode(true)}
+                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      Regenerate Seats
+                    </button>
+                  )}
+                  <button
+                    onClick={resetToGenerate}
+                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                  >
+                    New Voucher
+                  </button>
+                </div>
+              </div>
+
+              {regenerateMode && (
+                <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded">
+                  <h3 className="font-medium text-yellow-800 mb-2">
+                    Regenerate Mode: Click on seats to select them for regeneration
+                  </h3>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={handleRegenerate}
+                      disabled={loading || selectedSeats.length === 0}
+                      className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {loading ? 'Regenerating...' : `Regenerate ${selectedSeats.length} Seat(s)`}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRegenerateMode(false);
+                        setSelectedSeats([]);
+                      }}
+                      className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {selectedSeats.length > 0 && (
+                    <p className="text-sm text-yellow-700 mt-2">
+                      Selected seats: {selectedSeats.join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 {seats.map((seat, index) => (
-                  <div key={index} className="flex items-center justify-between bg-white p-3 rounded border">
+                  <div 
+                    key={index} 
+                    className={`flex items-center justify-between bg-white p-3 rounded border ${
+                      regenerateMode 
+                        ? 'cursor-pointer hover:bg-gray-50 transition-colors' 
+                        : ''
+                    } ${
+                      selectedSeats.includes(seat) 
+                        ? 'ring-2 ring-orange-500 bg-orange-50' 
+                        : ''
+                    }`}
+                    onClick={() => regenerateMode && toggleSeatSelection(seat)}
+                  >
                     <div className="flex items-center">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium mr-3">
-                        {index + 1}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium mr-3 ${
+                        selectedSeats.includes(seat) 
+                          ? 'bg-orange-100 text-orange-600' 
+                          : 'bg-blue-100 text-blue-600'
+                      }`}>
+                        {regenerateMode && selectedSeats.includes(seat) ? '✓' : index + 1}
                       </div>
                       <div>
                         <p className="font-medium text-gray-800">Seat {seat}</p>
@@ -213,7 +340,13 @@ const VoucherGenerator = () => {
                       </div>
                     </div>
                     <div className="text-sm font-medium text-green-600">
-                      ✓ Voucher Created
+                      {regenerateMode ? (
+                        <span className="text-orange-600">
+                          {selectedSeats.includes(seat) ? 'Selected' : 'Click to select'}
+                        </span>
+                      ) : (
+                        '✓ Voucher Created'
+                      )}
                     </div>
                   </div>
                 ))}
